@@ -53,26 +53,76 @@ float colors4leafs[3*4] = {1,1,1,1, 0,0.8,0,1, 0,0.5,0,1};
 float vertices4ground[6*3]= {-10,0,-10, 10,0,10, 10,0,-10, -10,0,-10, -10,0,10, 10,0,10,};
 float colors4ground[6*4]= {0,1,0,1, 1,1,1,1, 0,1,0,1, 0,1,0,1, 1,1,1,1, 1,1,1,1};
 
+
+/**************************** HELPER *****************************************/
+
+/*
+ * get geometry data for a quad
+ */ 
+void help_get_quad_geo(float x, float y, float* floatValues) // {{{1
+{
+    // {-10,0,-10, 10,0,10, 10,0,-10, -10,0,-10, -10,0,10, 10,0,10,};
+    floatValues[0]  = 0  ; floatValues[1]  = 0  ; floatValues[2] = 0  ;
+    floatValues[3]  = x   ; floatValues[4] = 0  ; floatValues[5] = 0   ;
+    floatValues[6]  = x   ; floatValues[7] = y  ; floatValues[8] = 0  ;
+    floatValues[9]  = 0  ; floatValues[10] = 0 ; floatValues[11] = 0 ;
+    floatValues[12] = x ; floatValues[13]  = y ; floatValues[14] = 0  ;
+    floatValues[15] = 0  ; floatValues[16] = y ; floatValues[17] = 0  ;
+}; // }}}
+
+/*
+ * simple draw helper
+ */
+void help_draw(float* vertArray, float* colorArray, int count, CGMatrix4x4& trans) // {{{1
+{
+    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertArray);
+    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, colorArray);
+    float floatValues[16];
+    trans.getFloatsToColMajor(floatValues);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,floatValues);
+    ourContext->cgDrawArrays(CG_TRIANGLES, 0, count);
+} // }}}
+
+/*
+ * helper to render a quadric
+ */
+void renderQuadric(CGQuadric &quadric) //{{{1
+{
+    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE,quadric.getPositionArray());
+    ourContext->cgVertexAttribPointer(CG_NORMAL_ATTRIBUTE, quadric.getNormalArray());
+    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, quadric.getColorArray());
+    ourContext->cgVertexAttribPointer(CG_TEXCOORD_ATTRIBUTE,quadric.getTexCoordArray());
+    ourContext->cgDrawArrays(GL_TRIANGLES,0,quadric.getVertexCount());
+    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, NULL);
+    ourContext->cgVertexAttribPointer(CG_NORMAL_ATTRIBUTE, NULL);
+    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, NULL);
+    ourContext->cgVertexAttribPointer(CG_TEXCOORD_ATTRIBUTE, NULL);
+}; //}}}
+
+
+/**************************** PLAY_GROUND ************************************/
+
 /*
  * main structure for the playground
  * declaration and definition
  */
-struct play_ground_t
+struct play_ground_t // {{{1
 {
     float dimX;
     float dimZ;
-    float baseColor;
+    float baseColor[4];
+    float borderColor[4];
     float vertices[6*3];
     float colors[6*4];
-    
 };
 play_ground_t playGround;
+// }}}
 
 /*
  * init the playground and calculate the vertex and 
  * color arrays
  */
-void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColor)
+void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColor, float* borderColor) //{{{1
 {
     pg.dimX = dimX;
     pg.dimZ = dimZ;
@@ -95,24 +145,111 @@ void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColo
         pg.colors[(os * 4) + 2] = baseColor[2];
         pg.colors[(os * 4) + 3] = baseColor[3];
     }
-};
+
+    /* set border color */
+    for (int i = 0; i < 4; i++)
+    {
+        pg.borderColor[i] = borderColor[i];
+    }
+}; // }}}
 
 /* 
- * draw playground
+ * draw playground with borders
  */
-void play_ground_draw(play_ground_t& pg, CGMatrix4x4 viewT)
+void play_ground_draw(play_ground_t& pg, CGMatrix4x4 viewT) //{{{1
 {
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, pg.vertices);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, pg.colors);
-    float floatValues[16];
-    viewT.getFloatsToColMajor(floatValues);
-    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,floatValues);
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 6);
-};
+    help_draw(pg.vertices, pg.colors, 6, viewT);
+    
+    float border_vertices[6*3];
+    help_get_quad_geo(pg.dimX, 2, border_vertices);
 
-/* 
- * function to draw the playground
+    float border_color[6*4];
+    for (int os = 0; os < 6; os++)
+    {
+        border_color[(os * 4) + 0] = pg.borderColor[0];
+        border_color[(os * 4) + 1] = pg.borderColor[1];
+        border_color[(os * 4) + 2] = pg.borderColor[2];
+        border_color[(os * 4) + 3] = pg.borderColor[3];
+    }
+
+    /* transform to the border */
+    ourContext->cgDisable(CG_CULL_FACE);
+    viewT = viewT *  CGMatrix4x4::getTranslationMatrix(-pg.dimX / 2, 0, -pg.dimZ / 2);
+    help_draw(border_vertices, border_color, 6, viewT);
+
+    viewT = viewT *  CGMatrix4x4::getTranslationMatrix(0 , 0, pg.dimZ);
+    help_draw(border_vertices, border_color, 6, viewT);
+
+    ourContext->cgEnable(CG_CULL_FACE);
+}; //}}}
+
+
+/**************************** PUK ********************************************/
+
+struct puk_t // {{{1
+{
+    float posX;
+    float posZ;
+
+    float dirX;
+    float dirZ;
+
+    float baseColor[4];
+    
+    CGQuadric shape;
+};
+puk_t puk;
+// }}}
+
+/*
+ * initialize
  */
+void puk_init(puk_t& p, float x, float z, float dx, float dz, float* baseColor) // {{{1
+{
+    p.posX = x;
+    p.posZ = z;
+    p.dirX = dx;
+    p.dirZ = dz;
+
+    p.shape.setStandardColor(baseColor[0], baseColor[1], baseColor[2]);
+    p.shape.createDisk(10, 2);
+    
+}; // }}}
+
+/*
+ * move the puk
+ * that means calculate the new position of the puk in
+ * relation to the movement vector
+ */
+void puk_move(puk_t& p) // {{{1
+{
+    p.posX = p.posX + p.dirX;
+    p.posZ = p.posZ + p.dirZ;
+}; // }}}
+
+/*
+ * make transformation and render the puk
+ */
+void puk_draw(puk_t& p, CGMatrix4x4 viewT) // {{{1
+{
+    viewT = viewT * CGMatrix4x4::getTranslationMatrix(p.posX, 0.5, p.posZ);
+    viewT = viewT * CGMatrix4x4::getScaleMatrix(0.5, 0.5, 0.5);
+    viewT = viewT * CGMatrix4x4::getRotationMatrixX(-90);
+    float mv[16];
+    viewT.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    renderQuadric(p.shape);
+} // }}}
+
+
+
+
+
+
+
+
+
+
 void drawGround(CGMatrix4x4 viewT) //{{{1
 {
     // GROUND
@@ -236,13 +373,21 @@ void programStep()
     ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
     // A4 b)
     //Camera rotating around center on r=15 circle.
-    float anim = 0.0;
+    static float anim = 0.0;
+    anim += 0.01;
     float eyeX = cos(anim)*15.0f, eyeY = 15.0f, eyeZ = sin(anim)*15.0f;
     CGMatrix4x4 viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,2,0, 0,1,0);
 
     //CGMatrix4x4 viewT = CGMatrix4x4::getTranslationMatrix(0.0f,-5.0,-25.0f);
     // drawGround(viewT);
     play_ground_draw(playGround, viewT);
+
+    CGMatrix4x4 modelviewT = viewT;
+    
+    puk_move(puk);
+    puk_draw(puk, viewT);
+    
+
     for(int i=10; i--; ) {
         float prX = float(i%7)/6.0f*16.0f-8.0f, // [0,6]->[-8,+8]
             prZ = float(i%4)/3.0f*16.0f-8.0f; // [0,3]->[-8,+8]
@@ -401,18 +546,6 @@ float rgbaWhite10[4] = {1,1,1,1},
 float shininess = 32.0f;
 //---------------------------------------------------------------------------
 
-void renderQuadric(CGQuadric &quadric)
-{
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE,quadric.getPositionArray());
-    ourContext->cgVertexAttribPointer(CG_NORMAL_ATTRIBUTE, quadric.getNormalArray());
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, quadric.getColorArray());
-    ourContext->cgVertexAttribPointer(CG_TEXCOORD_ATTRIBUTE,quadric.getTexCoordArray());
-    ourContext->cgDrawArrays(GL_TRIANGLES,0,quadric.getVertexCount());
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, NULL);
-    ourContext->cgVertexAttribPointer(CG_NORMAL_ATTRIBUTE, NULL);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, NULL);
-    ourContext->cgVertexAttribPointer(CG_TEXCOORD_ATTRIBUTE, NULL);
-}
 
 
 void programStep_Lighting()
@@ -636,7 +769,11 @@ int main(int argc, char** argv)
 {
     /* init our structures */
     float pl_color[4] = {0.6f, 0.8f, 0.9f, 1.0f};
-    play_ground_init(playGround, 20, 20, pl_color);
+    float pl_border_color[4] = {0.3f, 0.8f, 0.4f, 1.0f};
+    play_ground_init(playGround, 20, 20, pl_color, pl_border_color);
+
+    float puk_color[4] = {0.9f, 0.2f, 0.2f, 1.0f};
+    puk_init(puk, 0, 0, 0.2, 0.1, puk_color);
 
     srand(time(0));
     cube.setStandardColor(1,0,0);
