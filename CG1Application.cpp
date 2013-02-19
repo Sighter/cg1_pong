@@ -2,6 +2,7 @@
 #include <stdlib.h>         // for rand()
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <time.h>
 
 #define PI 3.14159265
 
@@ -10,6 +11,12 @@
 #include "CGContext.h"
 #include "CGMatrix.h"
 #include "CGLightSource.h"
+#include "deerVertexData.h" // vertex data is defined here
+#include "CG1Application_renderSphere.h"
+#include "CGMatrix.h"
+#include "CGMath.h"
+#include "CGQuadric.h"
+
 //---------------------------------------------------------------------------
 // Defines, globals, etc.
 #define FRAME_WIDTH  480
@@ -17,6 +24,7 @@
 #define FRAME_SCALE  1   // Integer scaling factors (zoom).
 
 
+// global context pointer
 CGContext *ourContext;
 
 
@@ -37,403 +45,6 @@ SpringenderPunkt b={0.5f, -0.75f, 70.0f, 50.0f};
 float vertex[VERTEX_COUNT][3];    // x,y,z
 float color[VERTEX_COUNT][4];      // r,g,b,a
 
-//---------------------------------------------------------------------------
-void animateSpringenderPunkt(SpringenderPunkt& p)
-{
-    if (p.x >=  FRAME_WIDTH-1) p.dx = -fabsf(p.dx);
-    if (p.x <=           0.0f) p.dx =  fabsf(p.dx);
-    if (p.y >= FRAME_HEIGHT-1) p.dy = -fabsf(p.dy);
-    if (p.y <=           0.0f) p.dy =  fabsf(p.dy);
-    p.x+=p.dx;
-    p.y+=p.dy;
-}
-//---------------------------------------------------------------------------
-// programStep_* functions are always our main application.
-void programStep_Ueb1_SpringenderPunkt()
-{
-    if (CG1Helper::isKeyReleased(CG_KEY_LEFT))  a.dx = -1.0f;
-    if (CG1Helper::isKeyReleased(CG_KEY_RIGHT)) a.dx =  1.0f;
-    if (CG1Helper::isKeyReleased(CG_KEY_UP))    a.dy =  1.0f;
-    if (CG1Helper::isKeyReleased(CG_KEY_DOWN))  a.dy = -1.0f;
-    animateSpringenderPunkt(a);
-    animateSpringenderPunkt(b);
-
-    // render
-    // Uebung01, Aufgabe 2a):
-    ourContext->cgClearColor(0.5f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT);
-    ourContext->cgEnable(CG_USE_BRESENHAM);
-
-    // prepare vertex array for point a
-    color[0][0]=1.0f;
-    color[0][1]=1.0f;
-    color[0][2]=1.0f;
-    color[0][3]=1.0f;
-
-    vertex[0][0]=a.x;
-    vertex[0][1]=a.y;
-    vertex[0][2]=0.0f;
-
-    // prepare vertex array for point b
-    color[1][0]=0.0f;
-    color[1][1]=1.0f;
-    color[1][2]=0.0f;
-    color[1][3]=1.0f;
-
-    vertex[1][0]=b.x;
-    vertex[1][1]=b.y;
-    vertex[1][2]=0.0f;
-
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
-
-    // Uebung01, Aufgabe 3b):
-    ourContext->cgDrawArrays(CG_LINES, 0, 2);
-}
-//---------------------------------------------------------------------------
-void programStep_LineBenchmark()
-{
-    ourContext->cgEnable(CG_USE_BRESENHAM);
-    ourContext->cgClearColor(0.5f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT);
-
-
-    for (int i = 0; i < 10000;i++)
-    {
-        // prepare vertex array for point a
-        color[0][0]=1.0f;
-        color[0][1]=1.0f;
-        color[0][2]=1.0f;
-        color[0][3]=1.0f;
-
-        vertex[0][0]=0.0f;
-        vertex[0][1]=0.0f;
-        vertex[0][2]=0.0f;
-
-        // prepare vertex array for point b
-        color[1][0]=1.0f;
-        color[1][1]=1.0f;
-        color[1][2]=1.0f;
-        color[1][3]=1.0f;
-
-        vertex[1][0]= FRAME_WIDTH - 1.0f;
-        vertex[1][1]= FRAME_HEIGHT - 1.0f;
-        vertex[1][2]=0.0f;
-
-        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
-        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
-
-        // Uebung01, Aufgabe 3b):
-        ourContext->cgDrawArrays(CG_LINES, 0, 2);
-
-    }
-
-}
-//---------------------------------------------------------------------------
-void rotate_vertex2d(float* vertex, float deg, float midx, float midy)
-{
-    float x = vertex[0] - midx;
-    float y = vertex[1] - midy;
-
-    x = (cos(deg) * x) + ((- sin(deg)) * y);
-    y = (sin(deg) * x) + ((cos(deg)) * y);
-
-    vertex[0] = x + midx;
-    vertex[1] = y + midy;
-}
-//---------------------------------------------------------------------------
-void programStep_LineAllSlopes()
-{
-    ourContext->cgEnable(CG_USE_BRESENHAM);
-    ourContext->cgClearColor(0.5f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT);
-
-
-    // color is every time the same
-    color[0][0]=1.0f;
-    color[0][1]=1.0f;
-    color[0][2]=1.0f;
-    color[0][3]=1.0f;
-
-    color[1][0]=1.0f;
-    color[1][1]=1.0f;
-    color[1][2]=1.0f;
-    color[1][3]=1.0f;
-
-    // start vertex is every time the same
-    vertex[0][0] = FRAME_WIDTH / 2.0f;
-    vertex[0][1] = FRAME_HEIGHT / 2.0f;
-    vertex[0][2] = 0.0f;
-
-    // first line horizontal
-    vertex[1][0] = vertex[0][0] + FRAME_WIDTH / 3.0f;
-    vertex[1][1] = vertex[0][1];
-    vertex[1][2] = 0.0f;
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
-    ourContext->cgDrawArrays(CG_LINES, 0, 2);
-
-    for (int i = 1; i < 7; i++)
-    {
-        rotate_vertex2d(vertex[1], (PI/8), FRAME_WIDTH / 2.0f, FRAME_HEIGHT / 2.0f);
-        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
-        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
-        ourContext->cgDrawArrays(CG_LINES, 0, 2);
-    }
-}
-//---------------------------------------------------------------------------
-// programStep to test bresenham interpolation:
-// Hint: set the resolution to 41x41 for this test.
-float vertexPosition_TestBresenham[32*3]={
-    20,30,0, 20,40,0, 24,29,0, 28,38,0, 27,27,0, 34,34,0, 29,24,0, 38,28,0,
-    30,20,0, 40,20,0, 29,16,0, 38,12,0, 27,13,0, 34,6,0, 24,11,0, 28,2,0,
-    20,10,0, 20,0,0, 16,11,0, 12,2,0, 13,13,0, 6,6,0, 11,16,0, 2,12,0,
-    10,20,0, 0,20,0, 11,24,0, 2,28,0, 13,27,0, 6,34,0, 16,29,0, 12,38,0
-};
-float vertexColor_TestBresenham[32*4]={
-    1,0,0,1, 1,1,1,1, 0,0,1,1, 1,1,0,1, 0,1,0,1, 1,0,1,1, 0,1,1,1, 1,0,0,1,
-    1,0,0,1, 0,1,1,1, 1,0,1,1, 0,1,0,1, 1,1,0,1, 0,0,1,1, 1,1,1,1, 1,0,0,1,
-    1,0,0,1, 0,0,1,1, 0,0,1,1, 0,1,0,1, 0,1,0,1, 0,1,1,1, 0,1,1,1, 1,0,0,1,
-    1,0,0,1, 1,0,1,1, 1,0,1,1, 1,1,0,1, 1,1,0,1, 1,1,1,1, 1,1,1,1, 1,0,0,1
-};
-void programStep_TestBresenham()
-{
-    // clear
-    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT);
-    // set capabilities and vertex pointers
-    ourContext->cgEnable(CG_USE_BRESENHAM);
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertexPosition_TestBresenham);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, vertexColor_TestBresenham);
-    // render
-    ourContext->cgDrawArrays(CG_LINES, 0, 32); // 32 vertices for 16 lines.
-}
-//---------------------------------------------------------------------------
-void programStep_TestTriangle()
-{
-    // clear
-    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT);
-    // construct vertex data (*should* not happen each frame)
-    float vertexPosition_TestTriangle[3*3]={0,0,0, 41-1,0,0, 41/2,41-1,0};
-    float vertexColor_TestTriangle[3*4] ={1,0,0,1, 0,0,1,1, 0,1,0,1};
-    // and set vertex pointers
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertexPosition_TestTriangle);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, vertexColor_TestTriangle);
-    // render
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 3); // 3 vertices for 1 triangle.
-}
-//---------------------------------------------------------------------------
-void programStep_TestRotatingTriangle()
-{
-    // clear
-    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT);
-    // Construct vertex data (*should* not happend each frame)
-    static float a=0.0; a+=0.01;
-    float ca = cos(a), sa = sin(a);
-    float vertexPosition_TestRotTriangle[3*3]={20,20,0, ca*30+20,sa*30+20,0, -sa*20+20,ca*20+20,0};
-    float vertexColor_TestRotTriangle[3*4]
-    ={1,0,0,1, 0,0,1,1, 0,1,0,1};
-    // and set vertex pointers
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertexPosition_TestRotTriangle);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE,
-        vertexColor_TestRotTriangle);
-    // render
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 3); // 3 vertices for 1 triangle.
-}
-//---------------------------------------------------------------------------
-void programStep_TestBFCandZTest()
-{
-    ourContext->cgEnable(CG_CULL_FACE);
-    ourContext->cgEnable(CG_DEPTH_TEST);
-    // Set the resolution of the context to 500 x 300!
-    // clear
-    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT/*|CG_DEPTH_BUFFER_BIT*/);
-    static float a=0.0; a+=0.01;
-    float ca = cos(a), sa = sin(a);
-    float PTS[24] = {-ca-sa*1.28,-0.6,sa-ca*1.28, ca-sa*1.28,-0.6,-sa-ca*1.28, ca-sa*0.6,1.28,-sa-ca*0.6,
-        -ca-sa*0.6,1.28,sa-ca*0.6, -ca+sa*0.6,-1.28,sa+ca*0.6, ca+sa*0.6,-1.28,-sa+ca*0.6,
-        ca+sa*1.28,0.6,-sa+ca*1.28, -ca+sa*1.28,0.6,sa+ca*1.28};
-#define R3 1,0,0,1, 1,0,0,1, 1,0,0,1
-#define G3 0,1,0,1, 0,1,0,1, 0,1,0,1
-#define B3 0,0,1,1, 0,0,1,1, 0,0,1,1
-#define C3 0,1,1,1, 0,1,1,1, 0,1,1,1
-#define M3 1,0,1,1, 1,0,1,1, 1,0,1,1
-#define Y3 1,1,0,1, 1,1,0,1, 1,1,0,1
-#define P(i) PTS[3*i+0]*60+100,PTS[3*i+1]*50+200,PTS[3*i+2]*0.1
-    // construct vertex data
-    float vertices4triangles[54*3] = {0,0,-1.1, 50,0,-1.1, 0,50,-1.1, 50,0,+1.1, 50,50,+1.1, 0,50,+1.1,
-        300,0,-0.5, 480,0,-0.5, 300,100,-0.5, 300,0,-0.5, 480,0,-0.5, 480,100,-0.5,
-        250,180,0.5, 500,240,-0.5, 250,240,0.5, 300,280,0, 350,150,0, 400,260,0,
-        P(0),P(1),P(2),P(0),P(2),P(3),P(1),P(5),P(6),P(1),P(6),P(2),P(3),P(2),P(6),P(3),P(6),P(7),
-        P(0),P(5),P(1),P(0),P(4),P(5),P(0),P(3),P(7),P(0),P(7),P(4),P(4),P(7),P(6),P(4),P(6),P(5)};
-    float colors4triangles[54*4] = {B3, B3, G3, R3, C3, Y3, G3, G3, R3, R3, B3, B3, Y3, Y3, C3, C3, M3, M3};
-#undef P
-#undef R3
-#undef B3
-#undef B3
-#undef C3
-#undef M3
-#undef Y3
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertices4triangles);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, colors4triangles);
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 54);
-}
-//---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
-void programStep_TestBlendingZSort()
-{
-    static bool anim_blend=false, anim_circle=true;
-    if (CG1Helper::isKeyReleased('b')) anim_blend=!anim_blend;
-    if (CG1Helper::isKeyReleased('c')) anim_circle=!anim_circle;
-    const int N = 20; // We define a set of N triangles for a resolution of 500x300
-    static float b=asin(0.4), c=0.0; b+=(anim_blend)?0.01:0.0; c+=(anim_circle)?0.01:0.0;
-    float vertices[N*3*3], colors[N*3*4]; // again, don’t do this locally as we do!
-
-    for(int i=0; i<N; i++) {
-        float rgba[4]={(i+1)&0x01?1:0,(i+1)&0x02?1:0,(i+2)&0x04?1:0, sin(b)*0.5+0.5};
-        float pos[3] = {i*10,i*10,-i*0.01};
-        if(i>=10) { // all triangles >= 10 will be rotating ones.
-            float a2 = c+float(i-10)/float(N-10)*6.283;
-            pos[X]=300+sin(a2)*100.0; pos[Y]=100-cos(a2)*50.0; pos[Z]=cos(a2)*0.9;
-        }
-        for(int j=0; j<3; j++) memcpy(colors+12*i+4*j,rgba,sizeof(float)*4);
-        for(int j=0; j<3; j++) memcpy(vertices+9*i+3*j,pos,sizeof(float)*3);
-        vertices[9*i+6+X]+=25.0;
-        vertices[9*i+3+X]+=50.0; vertices[9*i+6+Y]+=75.0;
-    }
-
-    // The index array describes the order of the triangles.
-    // [0,2,1] would mean to render the first, third and then second triangle.
-    int indexArray[N];
-    for(int i=0; i<N; i++) indexArray[i]=i; // initialize with identity [0,1,2...]
-    // *** Insert your code for sorting the index array here *** //
-    // *** Sort by the z-component of the first corner of the *** //
-    // *** i-th triangle (e.g. float zi = vertices[3*3*i+Z]). *** //
-
-    // i=0 1 2 3 4 5
-    //   8 4 2 7 9 1
-    bool swap=true;int temp;
-    while(swap)
-    {
-        swap=false;
-        for(int i=0; i<N-1;i++)
-            if(vertices[9*indexArray[i]+2]<vertices[9*(indexArray[i+1])+2])
-            {
-                temp=indexArray[i];
-                indexArray[i]=indexArray[i+1];
-                indexArray[i+1]=temp;
-                swap=true;
-            }
-    }
-
-    ourContext->cgClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
-    ourContext->cgEnable(CG_DEPTH_TEST);
-    ourContext->cgEnable(CG_CULL_FACE);
-    ourContext->cgEnable(CG_BLEND);
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertices);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, colors);
-    // We use the index array by passing the correct vertex offset for each triangle.
-    for(int i=0; i<N; i++)
-        ourContext->cgDrawArrays(CG_TRIANGLES, 3*indexArray[i], 3);
-}
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-void programStep_AwesomeTriangle()
-{
-    const int N = 20;
-    static float a=0.0; a+=0.01;
-    if (a >= 0.5) a = 0.0;
-    float vertices[3*3*N], colors[3*4*N]; // again, don’t do this locally as we do!
-    vertices[3*0+X] = 0; vertices[3*0+Y] = 0; vertices[3*0+Z] = 0;
-    colors[4*0+R] = 1.0f; colors[4*0+G] = 0; colors[4*0+B] = 0; colors[4*0+A] = 0.2f;
-    vertices[3*1+X] = 500; vertices[3*1+Y] = 0; vertices[3*1+Z] = 0;
-    colors[4*1+R] = 0.0f; colors[4*1+G] = 1.0f; colors[4*1+B] = 0; colors[4*1+A] = 0.2f;
-    vertices[3*2+X] = 250; vertices[3*2+Y] = 433; vertices[3*2+Z] = 0;
-    colors[4*2+R] = 0.0f; colors[4*2+G] = 0; colors[4*2+B] = 1.0f; colors[4*2+A] = 0.2f;
-    float tempVertices[3*3];
-    float tempColors[3*4];
-    for (int i = 0; i < 19; i++)
-    {
-        memcpy(tempColors,&colors[3*4*i],3*4*sizeof(float));
-        tempVertices[3*0+X] = a*vertices[3*3*i+3*1+X]+(1-a)*vertices[3*3*i+3*0+X];
-        tempVertices[3*0+Y] = a*vertices[3*3*i+3*1+Y]+(1-a)*vertices[3*3*i+3*0+Y];
-        tempVertices[3*0+Z] = a*vertices[3*3*i+3*1+Z]+(1-a)*vertices[3*3*i+3*0+Z];
-        tempVertices[3*1+X] = a*vertices[3*3*i+3*2+X]+(1-a)*vertices[3*3*i+3*1+X];
-        tempVertices[3*1+Y] = a*vertices[3*3*i+3*2+Y]+(1-a)*vertices[3*3*i+3*1+Y];
-        tempVertices[3*1+Z] = a*vertices[3*3*i+3*2+Z]+(1-a)*vertices[3*3*i+3*1+Z];
-        tempVertices[3*2+X] = a*vertices[3*3*i+3*0+X]+(1-a)*vertices[3*3*i+3*2+X];
-        tempVertices[3*2+Y] = a*vertices[3*3*i+3*0+Y]+(1-a)*vertices[3*3*i+3*2+Y];
-        tempVertices[3*2+Z] = a*vertices[3*3*i+3*0+Z]+(1-a)*vertices[3*3*i+3*2+Z];
-        memcpy(&vertices[3*3*(i+1)],tempVertices,3*3*sizeof(float));
-        memcpy(&colors[3*4*(i+1)],tempColors,3*4*sizeof(float));
-    }
-    ourContext->cgClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
-    //ourContext->cgEnable(CG_DEPTH_TEST);
-    //ourContext->cgEnable(CG_CULL_FACE);
-    ourContext->cgEnable(CG_BLEND);
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertices);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, colors);
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 20*3);
-}
-//---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
-void programStep_ProjectionTest()
-{
-    // Create a unit-cube which is later (manually) transformed.
-    // Hint: this is just a hack as long as we have no model transformation,
-    // i. e. do not attempt this at home!
-    float vertices4cube[12*3*3]={0,0,0,1,1,0,1,0,0,0,0,0,0,1,0,1,1,0, // FRONT
-        0,0,1,1,0,1,1,1,1,0,0,1,1,1,1,0,1,1, // BACK
-        0,0,1,0,1,0,0,0,0,0,0,1,0,1,1,0,1,0, // LEFT
-        1,0,1,1,0,0,1,1,0,1,0,1,1,1,0,1,1,1, // RIGHT
-        0,1,1,1,1,1,1,1,0,0,1,1,1,1,0,0,1,0, // TOP
-        0,0,1,1,0,0,1,0,1,0,0,1,0,0,0,1,0,0}; // BOTTOM
-    float colors4cube[12*3*4];
-
-    for(int i=0; i<36; i++) {
-        // compute colors from temporary vertex positions:
-        colors4cube[4*i+0]=vertices4cube[3*i+0];
-        colors4cube[4*i+1]=vertices4cube[3*i+1];
-        colors4cube[4*i+2]=vertices4cube[3*i+2];
-        colors4cube[4*i+3]=1.0f;
-        // compute (manually!) transformed vertex positions:
-        vertices4cube[3*i+0]=vertices4cube[3*i+0]*0.5f+0.5f;
-        vertices4cube[3*i+1]=vertices4cube[3*i+1]*0.5f-1.0f;
-        vertices4cube[3*i+2]=vertices4cube[3*i+2]*0.5f-2.0f;
-    }
-    // ground plane
-    CGMatrix4x4 projMat;
-    float f=1.1;
-
-    projMat=CGMatrix4x4::getFrustum(-0.1f, 0.1f, -0.1f, 0.1f, 0.1f, 2.0f);
-    float proj[16]; projMat.getFloatsToColMajor(proj);
-
-    ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
-    ourContext->cgClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
-    ourContext->cgEnable(CG_DEPTH_TEST);
-    ourContext->cgEnable(CG_CULL_FACE); // !
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertices4cube);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, colors4cube);
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 12*3);
-
-    // Plus: draw a ground plane:
-    float vertices4ground[6*3] = {-1,-1,-1,1,-1,-1,1,-1,-3,-1,-1,-1,1,-1,-3,-1,-1,-3};
-    float colors4ground[6*4];
-    for(int i=6;i--;) { float* c=colors4ground+4*i; c[0]=c[1]=c[2]=0.8f; c[3]=1.0f; }
-    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertices4ground);
-    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, colors4ground);
-    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 2*3);
-}
-//---------------------------------------------------------------------------
-
 
 float vertices4trunk[3*3] = {-0.2,0,0.1, 0.2,0,0.1, 0,2,0};
 float colors4trunk[3*4] = {0.5,0.25,0,1, 0.5,0.25,0,1, 0.5,0.25,0,1};
@@ -441,8 +52,68 @@ float vertices4leafs[3*3] = {0,0,0, 2,0,0.2, 0,2,0.2};
 float colors4leafs[3*4] = {1,1,1,1, 0,0.8,0,1, 0,0.5,0,1};
 float vertices4ground[6*3]= {-10,0,-10, 10,0,10, 10,0,-10, -10,0,-10, -10,0,10, 10,0,10,};
 float colors4ground[6*4]= {0,1,0,1, 1,1,1,1, 0,1,0,1, 0,1,0,1, 1,1,1,1, 1,1,1,1};
-//---------------------------------------------------------------------------
-void drawGround(CGMatrix4x4 viewT)
+
+/*
+ * main structure for the playground
+ * declaration and definition
+ */
+struct play_ground_t
+{
+    float dimX;
+    float dimZ;
+    float baseColor;
+    float vertices[6*3];
+    float colors[6*4];
+    
+};
+play_ground_t playGround;
+
+/*
+ * init the playground and calculate the vertex and 
+ * color arrays
+ */
+void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColor)
+{
+    pg.dimX = dimX;
+    pg.dimZ = dimZ;
+
+    float hx = dimX / 2;
+    float hz = dimZ / 2;
+    
+    // {-10,0,-10, 10,0,10, 10,0,-10, -10,0,-10, -10,0,10, 10,0,10,};
+    pg.vertices[0]  = -hx  ; pg.vertices[1]  = 0  ; pg.vertices[2] = -hz  ;
+    pg.vertices[3]  = hx   ; pg.vertices[4]  = 0  ; pg.vertices[5] = hz   ;
+    pg.vertices[6]  = hx   ; pg.vertices[7]  = 0  ; pg.vertices[8] = -hz  ;
+    pg.vertices[9]  = -hx  ; pg.vertices[10] = 0 ; pg.vertices[11] = -hz ;
+    pg.vertices[12] = -hx ; pg.vertices[13]  = 0 ; pg.vertices[14] = hz  ;
+    pg.vertices[15] = hx  ; pg.vertices[16]  = 0 ; pg.vertices[17] = hz  ;
+    
+    for (int os = 0; os < 6; os++)
+    {
+        pg.colors[(os * 4) + 0] = baseColor[0];
+        pg.colors[(os * 4) + 1] = baseColor[1];
+        pg.colors[(os * 4) + 2] = baseColor[2];
+        pg.colors[(os * 4) + 3] = baseColor[3];
+    }
+};
+
+/* 
+ * draw playground
+ */
+void play_ground_draw(play_ground_t& pg, CGMatrix4x4 viewT)
+{
+    ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, pg.vertices);
+    ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, pg.colors);
+    float floatValues[16];
+    viewT.getFloatsToColMajor(floatValues);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,floatValues);
+    ourContext->cgDrawArrays(CG_TRIANGLES, 0, 6);
+};
+
+/* 
+ * function to draw the playground
+ */
+void drawGround(CGMatrix4x4 viewT) //{{{1
 {
     // GROUND
     ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, vertices4ground);
@@ -451,8 +122,10 @@ void drawGround(CGMatrix4x4 viewT)
     ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,floatValues);
     ourContext->cgDrawArrays(CG_TRIANGLES, 0, 6);
 }
-//---------------------------------------------------------------------------
-void drawTree(CGMatrix4x4 transform)
+/*
+ * TODO use this function for obstacles
+ */
+void drawTree(CGMatrix4x4 transform) //{{{1
 {
     CGMatrix4x4 Ttrunk, Tleaf1, Tleaf2, Tleaf3;
     float floatValues[16];
@@ -490,10 +163,14 @@ void drawTree(CGMatrix4x4 transform)
     }
 
 }
-//---------------------------------------------------------------------------
+
+/*
+ * method for setting the camera transformation
+ */
+
 CGMatrix4x4 cguLookAt(float eyeX, float eyeY, float eyeZ,
     float centerX, float centerY, float centerZ,
-    float upX, float upY, float upZ)
+    float upX, float upY, float upZ) 
 {
     // A4 a)
     CGMatrix4x4 V;
@@ -531,15 +208,23 @@ CGMatrix4x4 cguLookAt(float eyeX, float eyeY, float eyeZ,
 
     return V;
 }
-//---------------------------------------------------------------------------
+
+/*
+ * set perspective matrix
+ */
 CGMatrix4x4 cguPerspective(float fov_y, float aspect, float zNear, float zFar)
 {
     // ZA6 a)
     CGMatrix4x4 P;
     return P;
 }
-//---------------------------------------------------------------------------
-void programStep_HappyHolidays()
+
+/*
+ * Program Step
+ *
+ * This draws the playground, the ball and the pedals
+ */
+void programStep()
 {
     ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
@@ -551,12 +236,13 @@ void programStep_HappyHolidays()
     ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
     // A4 b)
     //Camera rotating around center on r=15 circle.
-    static float anim = 0.0; anim+=0.01;
+    float anim = 0.0;
     float eyeX = cos(anim)*15.0f, eyeY = 15.0f, eyeZ = sin(anim)*15.0f;
     CGMatrix4x4 viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,2,0, 0,1,0);
 
     //CGMatrix4x4 viewT = CGMatrix4x4::getTranslationMatrix(0.0f,-5.0,-25.0f);
-    drawGround(viewT);
+    // drawGround(viewT);
+    play_ground_draw(playGround, viewT);
     for(int i=10; i--; ) {
         float prX = float(i%7)/6.0f*16.0f-8.0f, // [0,6]->[-8,+8]
             prZ = float(i%4)/3.0f*16.0f-8.0f; // [0,3]->[-8,+8]
@@ -564,27 +250,6 @@ void programStep_HappyHolidays()
         drawTree(treeT);
     }
 }
-/*
-//---------------------------------------------------------------------------
-int main(int argc, char** argv)
-{
-CG1Helper::initApplication(ourContext, FRAME_WIDTH, FRAME_HEIGHT, FRAME_SCALE);
-
-CG1Helper::setProgramStep(programStep_HappyHolidays);
-
-CG1Helper::runApplication();
-
-return 0;
-}
-//---------------------------------------------------------------------------
-*/
-
-#include <stdlib.h> // for rand() and srand()
-#include <time.h> // for time() in srand()
-#include "deerVertexData.h" // vertex data is defined here
-#include "CG1Application_renderSphere.h"
-#include "CGMatrix.h"
-#include "CGMath.h"
 
 
 //---------------------------------------------------------------------------
@@ -724,23 +389,7 @@ void programStep_FrustumCulling()
     }
     printf("visible: %d: culled: %d\n",visible,NDEER-visible);
 }
-//---------------------------------------------------------------------------
-/*int main(int argc, char** argv)
-{
-srand(time(0)); //init random seed
-deer = new CGDeer[NDEER]; //create herd
-createTestSphere(3); //create bounding sphere vertices
-createTestSphere2D(60); //create bounding circle vertices
-CG1Helper::initApplication(ourContext, FRAME_WIDTH, FRAME_HEIGHT, FRAME_SCALE);
 
-CG1Helper::setProgramStep(programStep_FrustumCulling);
-CG1Helper::runApplication();
-delete[] deer;
-return 0;
-}*/
-//---------------------------------------------------------------------------
-
-#include "CGQuadric.h"
 //---------------------------------------------------------------------------
 // Light and material properties, which will later be passed as uniforms.
 float rgbaWhite10[4] = {1,1,1,1},
@@ -985,6 +634,10 @@ void programStep_LightingHomework()
 //---------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
+    /* init our structures */
+    float pl_color[4] = {0.6f, 0.8f, 0.9f, 1.0f};
+    play_ground_init(playGround, 20, 20, pl_color);
+
     srand(time(0));
     cube.setStandardColor(1,0,0);
     cube.createBox(5,5,5);
@@ -998,7 +651,7 @@ int main(int argc, char** argv)
     spotDisk.setStandardColor(1,1,1);
     spotDisk.createDisk(32,1);
     CG1Helper::initApplication(ourContext, FRAME_WIDTH, FRAME_HEIGHT, FRAME_SCALE);
-    CG1Helper::setProgramStep(programStep_LightingHomework);
+    CG1Helper::setProgramStep(programStep);
     CG1Helper::runApplication();
     return 0;
 }
