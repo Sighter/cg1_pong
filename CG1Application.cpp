@@ -237,13 +237,16 @@ void help_print_keys() // {{{1
     printf("\n\nYou can use the following keys:\n");
     printf("===============================\n\n");
     printf("Player 2:\n");
-    printf("Toggle AI --> q\n");
-    printf("Move Up --> e\n");
-    printf("Move Down --> d\n");
+    printf("Toggle AI      --> q\n");
+    printf("Move Up        --> e\n");
+    printf("Move Down      --> d\n\n");
     printf("Player 1:\n");
-    printf("Toggle AI --> -\n");
-    printf("Move Up --> UP\n");
-    printf("Move Down --> DOWN\n\n\n");
+    printf("Toggle AI      --> -\n");
+    printf("Move Up        --> UP\n");
+    printf("Move Down      --> DOWN\n\n");
+    printf("General:\n");
+    printf("Toggle Camera  --> t\n");
+    printf("Toggle Light   --> l\n");
 } // }}}
 
 /* function to draw specified segment
@@ -870,7 +873,7 @@ void drawFrame() // {{{1
     /* turn on the light */
     if (use_light)
     {
-        float spotCutoff = 80.0f,spotExp = 10.0f,conAtt=1.0f,linAtt=0.0f,quadAtt=0.0f;
+        float spotCutoff = 80.0f,spotExp = 1.0f,conAtt=1.0f,linAtt=0.0f,quadAtt=0.0f;
         CGVec4 spotPos;
         spotPos.set(puk.posX,5,puk.posZ,1);
         CGVec4 spotDir;
