@@ -85,6 +85,20 @@ CGMatrix4x4 CGMatrix4x4::getFrustum(float left, float right, float bottom, float
   f.m_matrix[3][3] = 0.0f;
   return f;
 }
+CGMatrix4x4 CGMatrix4x4::getOrtho(float left, float right, float bottom, float top, float near, float far)
+{
+    CGMatrix4x4 m;
+    m.m_matrix[0][0] = 2.0f / (right - left);
+
+    m.m_matrix[1][1] = 2.0f / (top - bottom);
+
+    m.m_matrix[2][2] = -2.0f / (far - near);
+
+    m.m_matrix[3][0] = -((right + left) / (right - left));
+    m.m_matrix[3][1] = -((top + bottom) / (top - bottom));
+    m.m_matrix[3][2] = -((far + near) / (far - near));
+    return m;
+}
 //---------------------------------------------------------------------------
 // CGMATRIX4X4 : Non-static operants.
 //---------------------------------------------------------------------------

@@ -30,6 +30,8 @@ public:
   static CGMatrix4x4 getRotationMatrix(float angle, float x, float y, float z);
   ///  returns a perspective projection matrix for a specified frustum
   static CGMatrix4x4 getFrustum(float left, float right, float bottom, float top, float zNear, float zFar);
+  
+  static CGMatrix4x4 getOrtho(float left, float right, float bottom, float top, float near, float far);
 
   // --- non-static members for modifying the current matrix (this) ---
 
@@ -69,6 +71,7 @@ public:
   CGVec4 operator* (const CGVec4& v) const;
   ///  apply perspective projection matrix to the matrix
   void frustum(float left, float right, float bottom, float top, float zNear, float zFar);
+
 private:
   /// the real matrix data
   float m_matrix[4][4];

@@ -37,6 +37,8 @@
 CGContext *ourContext;
 
 bool anim_cam;
+bool use_light;
+float cam_anim = 2.0;
 
 enum sides {LEFT, RIGHT};
 enum intel {HUMAN, MIGHTYBOT};
@@ -70,6 +72,8 @@ struct CGCamera { // {{{1
         CGVec4 n;
         float d;
     } clip_plane[2];
+
+    camera_mode mode;
 } ourCamera; // }}}
 
 /*
@@ -230,17 +234,16 @@ void help_draw1(CGMatrix4x4 viewT) // {{{1
  */
 void help_print_keys() // {{{1
 {
-    printf("You can use the following keys:\n");
+    printf("\n\nYou can use the following keys:\n");
     printf("===============================\n\n");
     printf("Player 2:\n");
     printf("Toggle AI --> q\n");
     printf("Move Up --> e\n");
     printf("Move Down --> d\n");
-
     printf("Player 1:\n");
     printf("Toggle AI --> -\n");
     printf("Move Up --> UP\n");
-    printf("Move Down --> DOWN\n");
+    printf("Move Down --> DOWN\n\n\n");
 } // }}}
 
 /* function to draw specified segment
@@ -401,6 +404,8 @@ struct play_ground_t // {{{1
     float borderColor[4];
     float vertices[6*3];
     float colors[6*4];
+
+    CGQuadric shape;
 };
 play_ground_t playGround;
 // }}}
@@ -433,6 +438,8 @@ void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColo
         pg.colors[(os * 4) + 2] = baseColor[2];
         pg.colors[(os * 4) + 3] = baseColor[3];
     }
+    pg.shape.setStandardColor(baseColor[0], baseColor[1], baseColor[2]);
+    pg.shape.createBox(20, 2, 20);
 
     /* set border color */
     for (int i = 0; i < 4; i++)
@@ -446,7 +453,17 @@ void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColo
  */
 void play_ground_draw(play_ground_t& pg, CGMatrix4x4 viewT) //{{{1
 {
-    help_draw(pg.vertices, pg.colors, 6, viewT);
+    //help_draw(pg.vertices, pg.colors, 6, viewT);
+    CGMatrix4x4 mvcopy = viewT;
+    mvcopy = mvcopy * CGMatrix4x4::getTranslationMatrix(0, -1, 0);
+    mvcopy = mvcopy * CGMatrix4x4::getScaleMatrix(10, 1, 10);
+    //mvcopy = mvcopy * CGMatrix4x4::getRotationMatrixX(-90);
+    float mv[16];
+    mvcopy.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
+    renderQuadric(pg.shape);
+    
     
     float border_vertices[6*3];
     help_get_quad_geo(pg.dimX, 2, border_vertices);
@@ -590,7 +607,7 @@ void paddle_init(paddle_t& p, float x, float z, float* baseColor, intel control)
     p.zScale = 3.0f;
 
     p.shape.setStandardColor(baseColor[0], baseColor[1], baseColor[2]);
-    p.shape.createBox();
+    p.shape.createBox(4,4,4);
     
 }; // }}}
 
@@ -609,6 +626,14 @@ void paddle_reset(paddle_t& p, float x, float z) // {{{1
  */
 void paddle_move(paddle_t& p, float dz) // {{{1
 {
+    /* wall constraint */
+    float new_pos = p.posZ + dz;
+    if (new_pos < 0)
+        new_pos *= -1;
+    
+    if (new_pos + (p.zScale) > 10)
+        return;
+
     p.posZ = p.posZ + dz;
 }; // }}}
 
@@ -622,6 +647,7 @@ void paddle_draw(paddle_t& p, CGMatrix4x4 viewT) // {{{1
     float mv[16];
     viewT.getFloatsToColMajor(mv);
     ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
     renderQuadric(p.shape);
 } // }}}
 
@@ -645,7 +671,7 @@ void paddle_toggle_control(paddle_t& p) // {{{1
  */
 void processUserInput() // {{{1
 {
-    if (CG1Helper::isKeyPressed(GLUT_KEY_F1))
+    if (CG1Helper::isKeyReleased(GLUT_KEY_F1))
         help_print_keys();
 
     /* paddle control player1 */
@@ -671,6 +697,32 @@ void processUserInput() // {{{1
     if (CG1Helper::isKeyReleased('q'))
         paddle_toggle_control(player2);
 
+    /* cam toggle */
+    if (CG1Helper::isKeyReleased('t'))
+    {
+        if (ourCamera.mode == PERSP)
+            ourCamera.mode = ORTHO;
+        else
+            ourCamera.mode = PERSP;
+    }
+    /* cam movement */
+    if (CG1Helper::isKeyPressed(CG_KEY_RIGHT))
+        cam_anim -= 0.01;
+    if (CG1Helper::isKeyPressed(CG_KEY_LEFT))
+        cam_anim += 0.01;
+
+    /* light toggle */
+    if (CG1Helper::isKeyReleased('l'))
+    {
+        if (use_light == true)
+        {
+            use_light = false;
+        }
+        else
+        {
+            use_light = true;
+        }
+    }
 } // }}}
 
 /*
@@ -680,7 +732,10 @@ void processAI(paddle_t& p) // {{{1
 {
     if (p.control == MIGHTYBOT)
     {
-        paddle_move(p, puk.dirZ);
+        if (p.posZ < puk.posZ)
+            paddle_move(p, 0.4f);
+        else
+            paddle_move(p, -0.4f);
     }
 } // }}}
 
@@ -775,27 +830,84 @@ void drawFrame() // {{{1
     ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
     ourContext->cgEnable(CG_DEPTH_TEST);
     ourContext->cgEnable(CG_CULL_FACE);
-    CGMatrix4x4 projMat=CGMatrix4x4::getFrustum(-0.062132f, 0.062132f, -0.041421f, 0.041421f,
-        0.1f, 50.0f);
-    float proj[16]; projMat.getFloatsToColMajor(proj);
-    ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
+    ourContext->cgEnable(CG_USE_BRESENHAM);
+    ourContext->cgEnable(CG_BLEND);
+    ourContext->cgEnable(CG_COLOR_MATERIAL);
+    ourContext->cgDisable(CG_PHONG_SHADING);
+    if (use_light)
+        ourContext->cgEnable(CG_LIGHTING);
+    else
+        ourContext->cgDisable(CG_LIGHTING);
 
-    // A4 b)
-    //Camera rotating around center on r=15 circle.
-    static float anim = 2.0;
-    //anim += 0.01;
-    float eyeX = cos(anim)*25.0f, eyeY = 25.0f, eyeZ = sin(anim)*25.0f;
-    CGMatrix4x4 viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,2,0, 0,1,0);
+    //CGMatrix4x4 projMat=CGMatrix4x4::getFrustum(-0.062132f, 0.062132f, -0.041421f, 0.041421f, 0.1f, 50.0f);
 
-    play_ground_draw(playGround, viewT);
+    CGLightSource lightSource[3];
+    // Light 1 will be a spot light using the animated position as direction.
+    
+    CGMatrix4x4 viewT;
+    CGMatrix4x4 projMat;
+
+    if (ourCamera.mode == PERSP)
+    {
+        // Camera rotating around center on r=15 circle.
+        projMat=CGMatrix4x4::getFrustum(-0.062132f, 0.062132f, -0.041421f, 0.041421f, 0.1f, 50.0f);
+        float proj[16]; projMat.getFloatsToColMajor(proj);
+        ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
+
+        float eyeX = cos(cam_anim)*25.0f, eyeY = 25.0f, eyeZ = sin(cam_anim)*25.0f;
+        viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,-4,0, 0,1,0);
+    }
+    else
+    {
+        projMat = CGMatrix4x4::getOrtho(-18, 18, -18, 18, 0.1f, 50.0f);
+        float proj[16]; projMat.getFloatsToColMajor(proj);
+        ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
+
+        float eyeX = 0.0f, eyeY = 40.0f, eyeZ = 0.0f;
+        viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,0,0, 0,0,-2);
+    }
+    
+    /* turn on the light */
+    if (use_light)
+    {
+        float spotCutoff = 80.0f,spotExp = 10.0f,conAtt=1.0f,linAtt=0.0f,quadAtt=0.0f;
+        CGVec4 spotPos;
+        spotPos.set(puk.posX,5,puk.posZ,1);
+        CGVec4 spotDir;
+        spotDir.set(0,-5,0,0);
+        lightSource[0].setColorAmbient (0.1,0.1,0.1,1.0);
+        lightSource[0].setColorDiffuse (0.5,0.5,0.5,1.0);
+        lightSource[0].setColorSpecular(0.5,0.5,0.5,1.0);
+        lightSource[0].setPosition((viewT*spotPos).elements);
+        lightSource[0].setSpotDirection((viewT*spotDir).elements);
+        lightSource[0].setSpotCutoff(spotCutoff);
+        lightSource[0].setSpotExponent(spotExp);
+
+        lightSource[0].setupUniforms(ourContext);
+
+
+        // Setup materials: we use CG_COLOR_MATERIAL and thus do not need to
+        // set ambient and diffuse values (will be overwritten by vertex color).
+        float rgbaWhite[4] = {1,1,1,1}, rgbaBlack[4] = {0,0,0,1};
+        float rgbaWhite005[4] = {0.05f,0.05f,0.05f,1.0};
+        float shininess = 32.0f;
+        ourContext->cgUniform4fv(CG_ULOC_MATERIAL_SPECULAR,1,rgbaWhite);
+        ourContext->cgUniform1fv(CG_ULOC_MATERIAL_SHININESS,1,&shininess);
+        ourContext->cgUniform4fv(CG_ULOC_MATERIAL_EMISSION,1,rgbaBlack);
+        // Setyp scene ambient
+        ourContext->cgUniform4fv(CG_ULOC_SCENE_AMBIENT,1,rgbaWhite005);
+    }
+
+
 
     /* draw the score left side */
     CGMatrix4x4 mvcopy = viewT;
-    mvcopy = mvcopy * CGMatrix4x4::getTranslationMatrix(-18, 0, 0);
+    mvcopy = mvcopy * CGMatrix4x4::getTranslationMatrix(-17, 0, 0);
     mvcopy = mvcopy * CGMatrix4x4::getRotationMatrixX(-90);
     float mv[16];
     mvcopy.getFloatsToColMajor(mv);
     ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
     draw_number(player2.points);
 
     /* draw the score right side */
@@ -804,8 +916,10 @@ void drawFrame() // {{{1
     mvcopy = mvcopy * CGMatrix4x4::getRotationMatrixX(-90);
     mvcopy.getFloatsToColMajor(mv);
     ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
     draw_number(player1.points);
 
+    play_ground_draw(playGround, viewT);
     CGMatrix4x4 modelviewT = viewT;
 
     paddle_draw(player1, viewT);
@@ -889,6 +1003,11 @@ float shininess = 32.0f;
 
 int main(int argc, char** argv)
 {
+    /* init cam */
+    ourCamera.mode = ORTHO;
+    
+    use_light = true;
+
     /* init playground */
     float pl_color[4] = {0.6f, 0.8f, 0.9f, 1.0f};
     float pl_border_color[4] = {0.3f, 0.8f, 0.4f, 1.0f};
@@ -896,7 +1015,8 @@ int main(int argc, char** argv)
 
     /* init ball */
     float puk_color[4] = {0.9f, 0.2f, 0.2f, 1.0f};
-    puk_init(puk, 0, 0, 0.4, 0.3, puk_color);
+    //puk_init(puk, 0, 0, 0.4, 0.3, puk_color);
+    puk_init(puk, 0, 0, 0, 0.7, puk_color);
 
     /* init player 1 */
     float player1_color[4] = {0.2f, 0.2f, 0.8f, 1.0f};
