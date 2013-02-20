@@ -7,8 +7,12 @@
 #include <math.h>
 #include <time.h>
 
-#define PI 3.14159265
+// TODO check if this is compatible with windows
+// http://www.cplusplus.com/forum/unices/60161/
+#include <unistd.h>
 
+
+#define PI 3.14159265
 // Our includes.
 #include "CG1Helper.h"
 #include "CGContext.h"
@@ -35,8 +39,21 @@ CGContext *ourContext;
 bool anim_cam;
 
 enum sides {LEFT, RIGHT};
-
 enum intel {HUMAN, MIGHTYBOT};
+enum camera_mode {ORTHO, PERSP};
+
+//numbers
+#define NUMBER_ONE   0x30
+#define NUMBER_TWO   0x5B
+#define NUMBER_THREE 0x79
+#define NUMBER_FOUR  0x74
+#define NUMBER_FIVE  0x6D
+#define NUMBER_SIX   0x6F
+#define NUMBER_SEVEN 0x38
+#define NUMBER_EIGHT 0x7F
+#define NUMBER_NINE  0x5F
+#define NUMBER_ZERO  0x3F
+
 // }}}
 
 
@@ -194,6 +211,179 @@ void renderQuadric(CGQuadric &quadric) //{{{1
     ourContext->cgVertexAttribPointer(CG_TEXCOORD_ATTRIBUTE, NULL);
 }; //}}}
 
+/*
+ * desc
+ */
+void help_draw1(CGMatrix4x4 viewT) // {{{1
+{
+    viewT = viewT * CGMatrix4x4::getScaleMatrix(0.3f, 0.2, 2.0);
+    float mv[16];
+    viewT.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    CGQuadric vline;
+    vline.createBox();
+    renderQuadric(vline);
+} // }}}
+
+/*
+ * desc
+ */
+void help_print_keys() // {{{1
+{
+    printf("You can use the following keys:\n");
+    printf("===============================\n\n");
+    printf("Player 2:\n");
+    printf("Toggle AI --> q\n");
+    printf("Move Up --> e\n");
+    printf("Move Down --> d\n");
+
+    printf("Player 1:\n");
+    printf("Toggle AI --> -\n");
+    printf("Move Up --> UP\n");
+    printf("Move Down --> DOWN\n");
+} // }}}
+
+/* function to draw specified segment
+ *
+ * do this by using a bitmask. Each bit represents one segment.
+ * e.g. 00000011 draws the bottom and bottom left segment
+ */ 
+void draw_segment_number(int bitMask, float startX, float startY) // {{{1
+{
+    int line_lenght = 4;
+    
+    float vertex[2][3];
+    float color[2][4];
+
+    for (int i = 0; i < 2; ++i)
+    {
+        color[i][0] = 1.0f;
+        color[i][1] = 1.0f;
+        color[i][2] = 1.0f;
+        color[i][3] = 1.0f;
+    }
+
+
+    // bottom
+    if (bitMask & 1)
+    {
+        vertex[0][0]= startX + 1.0f;
+        vertex[0][1]= startY;
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX + 1.0f + line_lenght - 1;
+        vertex[1][1]= startY;
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+    // bottom left
+    if (bitMask & 2)
+    {
+        vertex[0][0]= startX;
+        vertex[0][1]= startY + 1.0f;
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX;
+        vertex[1][1]= startY + 1.0f + line_lenght - 1;
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+    // top left
+    if (bitMask & 4)
+    {
+        vertex[0][0]= startX;
+        vertex[0][1]= startY + 2.0f + line_lenght;
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX;
+        vertex[1][1]= startY + 2.0f + 2 * line_lenght - 1;
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+    // top
+    if (bitMask & 8)
+    {
+        vertex[0][0]= startX + 1.0f;
+        vertex[0][1]= startY + 2.0f + (2 * line_lenght);
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX + 1.0f + line_lenght - 1;
+        vertex[1][1]= startY + 2.0f + (2 * line_lenght);
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+    // top right
+    if (bitMask & 16)
+    {
+        vertex[0][0]= startX + 1.0f + line_lenght;
+        vertex[0][1]= startY + 2.0f + line_lenght;
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX + 1.0f + line_lenght;
+        vertex[1][1]= startY + 2.0f + 2 * line_lenght - 1;
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+    // bottom right
+    if (bitMask & 32)
+    {
+        vertex[0][0]= startX + 1.0f + line_lenght;
+        vertex[0][1]= startY + 1.0f;
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX + 1.0f + line_lenght;
+        vertex[1][1]= startY + 1.0f + line_lenght - 1;
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+    // mid
+    if (bitMask & 64)
+    {
+        vertex[0][0]= startX + 1.0f;
+        vertex[0][1]= startY + 1.0f + line_lenght;
+        vertex[0][2]=0.0f;
+        vertex[1][0]= startX + 1.0f + line_lenght - 1;
+        vertex[1][1]= startY + 1.0f + line_lenght;
+        vertex[1][2]=0.0f;
+        ourContext->cgVertexAttribPointer(CG_POSITION_ATTRIBUTE, &vertex[0][0]);
+        ourContext->cgVertexAttribPointer(CG_COLOR_ATTRIBUTE, &color[0][0]);
+        ourContext->cgDrawArrays(CG_LINES, 0, 2);
+    }
+
+} // }}}
+
+/*
+ * draw a segment number for the given integer
+ */
+void draw_number(int number) //{{{1
+{
+    /* Todo check correctness */
+    switch(number)
+    {
+        case 1: draw_segment_number(NUMBER_ONE, 0, 0); break;
+        case 2: draw_segment_number(NUMBER_TWO, 0, 0); break;
+        case 3: draw_segment_number(NUMBER_THREE, 0, 0); break;
+        case 4: draw_segment_number(NUMBER_FOUR, 0, 0); break;
+        case 5: draw_segment_number(NUMBER_FIVE, 0, 0); break;
+        case 6: draw_segment_number(NUMBER_SIX, 0, 0); break;
+        case 7: draw_segment_number(NUMBER_SEVEN, 0, 0); break;
+        case 8: draw_segment_number(NUMBER_EIGHT, 0, 0); break;
+        case 9: draw_segment_number(NUMBER_NINE, 0, 0); break;
+        case 0: draw_segment_number(NUMBER_ZERO, 0, 0); break;
+    }
+} //}}}
 
 /*****************************************************************************/
 /**************************** PLAY_GROUND ************************************/
@@ -321,6 +511,17 @@ void puk_init(puk_t& p, float x, float z, float dx, float dz, float* baseColor) 
 }; // }}}
 
 /*
+ * reset the puk
+ */
+void puk_reset(puk_t& p, float x, float z, float dx, float dz) // {{{1
+{
+    p.posX = x;
+    p.posZ = z;
+    p.dirX = dx;
+    p.dirZ = dz;
+} // }}}
+
+/*
  * move the puk
  * that means calculate the new position of the puk in
  * relation to the movement vector
@@ -363,6 +564,8 @@ struct paddle_t // {{{1
     float baseColor[4];
     
     intel control;
+
+    int points;
     
     CGQuadric shape;
 };
@@ -379,6 +582,8 @@ void paddle_init(paddle_t& p, float x, float z, float* baseColor, intel control)
     p.posX = x;
     p.posZ = z;
 
+    p.points = 0;
+
     p.control = control;
 
     p.xScale = 0.5f;
@@ -387,6 +592,15 @@ void paddle_init(paddle_t& p, float x, float z, float* baseColor, intel control)
     p.shape.setStandardColor(baseColor[0], baseColor[1], baseColor[2]);
     p.shape.createBox();
     
+}; // }}}
+
+/*
+ * reset a paddle
+ */
+void paddle_reset(paddle_t& p, float x, float z) // {{{1
+{
+    p.posX = x;
+    p.posZ = z;
 }; // }}}
 
 /*
@@ -411,6 +625,16 @@ void paddle_draw(paddle_t& p, CGMatrix4x4 viewT) // {{{1
     renderQuadric(p.shape);
 } // }}}
 
+/*
+ * toggle player control
+ */
+void paddle_toggle_control(paddle_t& p) // {{{1
+{
+    if (p.control == HUMAN)
+        p.control = MIGHTYBOT;
+    else if (p.control == MIGHTYBOT)
+        p.control = HUMAN;
+} // }}}
 
 /*****************************************************************************/
 /**************************** SIMULATION LOOP ********************************/
@@ -421,11 +645,32 @@ void paddle_draw(paddle_t& p, CGMatrix4x4 viewT) // {{{1
  */
 void processUserInput() // {{{1
 {
+    if (CG1Helper::isKeyPressed(GLUT_KEY_F1))
+        help_print_keys();
+
     /* paddle control player1 */
-    if (CG1Helper::isKeyPressed(CG_KEY_UP))
-        paddle_move(player1, -1);
-    if (CG1Helper::isKeyPressed(CG_KEY_DOWN))
-        paddle_move(player1, 1);
+    if (player1.control == HUMAN)
+    {
+        if (CG1Helper::isKeyPressed(CG_KEY_UP))
+            paddle_move(player1, -1);
+        if (CG1Helper::isKeyPressed(CG_KEY_DOWN))
+            paddle_move(player1, 1);
+    }
+    if (CG1Helper::isKeyReleased('-'))
+        paddle_toggle_control(player1);
+
+
+    /* paddle control player2 */
+    if (player2.control == HUMAN)
+    {
+        if (CG1Helper::isKeyPressed('e'))
+            paddle_move(player2, -1);
+        if (CG1Helper::isKeyPressed('d'))
+            paddle_move(player2, 1);
+    }
+    if (CG1Helper::isKeyReleased('q'))
+        paddle_toggle_control(player2);
+
 } // }}}
 
 /*
@@ -435,7 +680,6 @@ void processAI(paddle_t& p) // {{{1
 {
     if (p.control == MIGHTYBOT)
     {
-        printf("movin ai\n");
         paddle_move(p, puk.dirZ);
     }
 } // }}}
@@ -445,6 +689,24 @@ void processAI(paddle_t& p) // {{{1
  */
 void stop_game(sides s) // {{{1
 {
+    /* side is the edge-side where the puk was going out */
+    if (s == RIGHT)
+    {
+        player2.points++;
+    }
+    else if (s == LEFT)
+    {
+        player1.points++;
+    }
+    puk_reset(puk, 0, 0, 0.4, 0.3);
+    paddle_reset(player1, 10, 0);
+    paddle_reset(player2, -10, 0);
+    printf("Score: %i : %i\n",player2.points, player1.points);
+    printf("Restarting in: ");
+    for (int i = 3; i >= 0; i--)
+        printf("%i ",i);
+        sleep(1);
+    printf("\n");
 } // }}}
 
 /*
@@ -463,12 +725,10 @@ void processPhysics() // {{{1
         /* check for left or right */
         if (puk.dirX > 0)
         {
-            printf("Puk out right!\n");
             side = RIGHT;
         }
         else
         {
-            printf("Puk out left!\n");
             side = LEFT;
         }
 
@@ -483,7 +743,7 @@ void processPhysics() // {{{1
             }
             else
             {
-                stop_game(LEFT);
+                stop_game(RIGHT);
             }
         }
         else
@@ -494,7 +754,7 @@ void processPhysics() // {{{1
             }
             else
             {
-                stop_game(RIGHT);
+                stop_game(LEFT);
             }
         }
     }
@@ -506,12 +766,56 @@ void processPhysics() // {{{1
     }
 } // }}}
 
-
 /*
- * draw all the objects
+ * drawing 
  */
 void drawFrame() // {{{1
 {
+    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
+    ourContext->cgEnable(CG_DEPTH_TEST);
+    ourContext->cgEnable(CG_CULL_FACE);
+    CGMatrix4x4 projMat=CGMatrix4x4::getFrustum(-0.062132f, 0.062132f, -0.041421f, 0.041421f,
+        0.1f, 50.0f);
+    float proj[16]; projMat.getFloatsToColMajor(proj);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
+
+    // A4 b)
+    //Camera rotating around center on r=15 circle.
+    static float anim = 2.0;
+    //anim += 0.01;
+    float eyeX = cos(anim)*25.0f, eyeY = 25.0f, eyeZ = sin(anim)*25.0f;
+    CGMatrix4x4 viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,2,0, 0,1,0);
+
+    play_ground_draw(playGround, viewT);
+
+    /* draw the score left side */
+    CGMatrix4x4 mvcopy = viewT;
+    mvcopy = mvcopy * CGMatrix4x4::getTranslationMatrix(-18, 0, 0);
+    mvcopy = mvcopy * CGMatrix4x4::getRotationMatrixX(-90);
+    float mv[16];
+    mvcopy.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    draw_number(player2.points);
+
+    /* draw the score right side */
+    mvcopy = viewT;
+    mvcopy = mvcopy * CGMatrix4x4::getTranslationMatrix(12, 0, 0);
+    mvcopy = mvcopy * CGMatrix4x4::getRotationMatrixX(-90);
+    mvcopy.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    draw_number(player1.points);
+
+    CGMatrix4x4 modelviewT = viewT;
+
+    paddle_draw(player1, viewT);
+    paddle_draw(player2, viewT);
+    
+    puk_move(puk);
+    puk_draw(puk, viewT);
+
+    
+
 } // }}}
 
 /*
@@ -529,40 +833,9 @@ void programStep() // {{{1
     processAI(player1);
     processAI(player2);
 
-    /*
-     * drawing 
-     */
-    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
-    ourContext->cgEnable(CG_DEPTH_TEST);
-    ourContext->cgEnable(CG_CULL_FACE);
-    CGMatrix4x4 projMat=CGMatrix4x4::getFrustum(-0.062132f, 0.062132f, -0.041421f, 0.041421f,
-        0.1f, 50.0f);
-    float proj[16]; projMat.getFloatsToColMajor(proj);
-    ourContext->cgUniformMatrix4fv(CG_ULOC_PROJECTION_MATRIX,1,false,proj);
+    drawFrame();
+} //}}}
 
-    // A4 b)
-    //Camera rotating around center on r=15 circle.
-    static float anim = 2.0;
-    //anim += 0.01;
-    float eyeX = cos(anim)*25.0f, eyeY = 25.0f, eyeZ = sin(anim)*25.0f;
-    CGMatrix4x4 viewT = cguLookAt(eyeX,eyeY,eyeZ, 0,2,0, 0,1,0);
-
-
-    //CGMatrix4x4 viewT = CGMatrix4x4::getTranslationMatrix(0.0f,-5.0,-25.0f);
-    // drawGround(viewT);
-    play_ground_draw(playGround, viewT);
-
-    CGMatrix4x4 modelviewT = viewT;
-
-    paddle_draw(player1, viewT);
-    paddle_draw(player2, viewT);
-    
-    puk_move(puk);
-    puk_draw(puk, viewT);
-    
-
-} // }}}
 
 
 //---------------------------------------------------------------------------
