@@ -9,7 +9,7 @@
 
 // TODO check if this is compatible with windows
 // http://www.cplusplus.com/forum/unices/60161/
-#include <unistd.h>
+//#include <unistd.h>
 
 
 #define PI 3.14159265
@@ -41,8 +41,11 @@ bool use_light;
 float cam_anim = 2.0;
 
 enum sides {LEFT, RIGHT};
-enum intel {HUMAN, MIGHTYBOT};
+enum intel {HUMAN, MIGHTYBOT, WEAKBOT};
 enum camera_mode {ORTHO, PERSP};
+
+/* the acceleration factor */
+#define ACCEL_FAC   1.1f
 
 //numbers
 #define NUMBER_ONE   0x30
@@ -247,6 +250,7 @@ void help_print_keys() // {{{1
     printf("General:\n");
     printf("Toggle Camera  --> t\n");
     printf("Toggle Light   --> l\n");
+    printf("Start Puk      --> SPACE\n");
 } // }}}
 
 /* function to draw specified segment
@@ -409,6 +413,7 @@ struct play_ground_t // {{{1
     float colors[6*4];
 
     CGQuadric shape;
+    CGQuadric borderShape;
 };
 play_ground_t playGround;
 // }}}
@@ -444,6 +449,9 @@ void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColo
     pg.shape.setStandardColor(baseColor[0], baseColor[1], baseColor[2]);
     pg.shape.createBox(20, 2, 20);
 
+    pg.borderShape.setStandardColor(borderColor[0], borderColor[1], borderColor[2]);
+    pg.borderShape.createBox(20, 2, 4);
+
     /* set border color */
     for (int i = 0; i < 4; i++)
     {
@@ -456,11 +464,10 @@ void play_ground_init(play_ground_t& pg, float dimX, float dimZ, float* baseColo
  */
 void play_ground_draw(play_ground_t& pg, CGMatrix4x4 viewT) //{{{1
 {
-    //help_draw(pg.vertices, pg.colors, 6, viewT);
+    /* draw the ground */
     CGMatrix4x4 mvcopy = viewT;
     mvcopy = mvcopy * CGMatrix4x4::getTranslationMatrix(0, -1, 0);
     mvcopy = mvcopy * CGMatrix4x4::getScaleMatrix(10, 1, 10);
-    //mvcopy = mvcopy * CGMatrix4x4::getRotationMatrixX(-90);
     float mv[16];
     mvcopy.getFloatsToColMajor(mv);
     ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
@@ -468,27 +475,20 @@ void play_ground_draw(play_ground_t& pg, CGMatrix4x4 viewT) //{{{1
     renderQuadric(pg.shape);
     
     
-    float border_vertices[6*3];
-    help_get_quad_geo(pg.dimX, 2, border_vertices);
+    /* draw borders */
+    mvcopy = viewT *  CGMatrix4x4::getTranslationMatrix(0, 0, (-pg.dimZ / 2) - 1);
+    mvcopy = mvcopy * CGMatrix4x4::getScaleMatrix(10, 2, 1);
+    mvcopy.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
+    renderQuadric(pg.borderShape);
 
-    float border_color[6*4];
-    for (int os = 0; os < 6; os++)
-    {
-        border_color[(os * 4) + 0] = pg.borderColor[0];
-        border_color[(os * 4) + 1] = pg.borderColor[1];
-        border_color[(os * 4) + 2] = pg.borderColor[2];
-        border_color[(os * 4) + 3] = pg.borderColor[3];
-    }
-
-    /* transform to the border */
-    ourContext->cgDisable(CG_CULL_FACE);
-    viewT = viewT *  CGMatrix4x4::getTranslationMatrix(-pg.dimX / 2, 0, -pg.dimZ / 2);
-    help_draw(border_vertices, border_color, 6, viewT);
-
-    viewT = viewT *  CGMatrix4x4::getTranslationMatrix(0 , 0, pg.dimZ);
-    help_draw(border_vertices, border_color, 6, viewT);
-
-    ourContext->cgEnable(CG_CULL_FACE);
+    mvcopy = viewT *  CGMatrix4x4::getTranslationMatrix(0, 0, (pg.dimZ / 2) + 1);
+    mvcopy = mvcopy * CGMatrix4x4::getScaleMatrix(10, 2, 1);
+    mvcopy.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
+    renderQuadric(pg.borderShape);
 }; //}}}
 
 
@@ -503,6 +503,9 @@ struct puk_t // {{{1
 
     float dirX;
     float dirZ;
+
+    float dirXOld;
+    float dirZOld;
 
     float radius;
 
@@ -522,6 +525,8 @@ void puk_init(puk_t& p, float x, float z, float dx, float dz, float* baseColor) 
     p.posZ = z;
     p.dirX = dx;
     p.dirZ = dz;
+    p.dirXOld = dx;
+    p.dirZOld = dz;
 
     p.radius = 0.5;
 
@@ -553,6 +558,25 @@ void puk_move(puk_t& p) // {{{1
 }; // }}}
 
 /*
+ * speed up the given puk
+ */
+void puk_speedup(puk_t& p, float factor) // {{{1
+{
+    p.dirX = factor * p.dirX;
+    p.dirZ = factor * p.dirZ;
+} // }}}
+
+/*
+ * desc
+ */
+bool puk_in_start_position(puk_t& p) // {{{1
+{
+    if (p.dirZ == 0 && p.dirZOld == 0 && p.dirX == 0 && p.dirXOld == 0)
+        return true;
+    
+    return false;
+} // }}}
+/*
  * make transformation and render the puk
  */
 void puk_draw(puk_t& p, CGMatrix4x4 viewT) // {{{1
@@ -564,6 +588,19 @@ void puk_draw(puk_t& p, CGMatrix4x4 viewT) // {{{1
     viewT.getFloatsToColMajor(mv);
     ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
     renderQuadric(p.shape);
+} // }}}
+
+/*
+ * wrapper to satisfy the needs 
+ */
+void initBall(bool side) // {{{1
+{
+    srand (time(NULL));
+    float puk_color[4] = {0.9f, 0.2f, 0.2f, 1.0f};
+    if (side == true)
+        puk_init(puk, -8, 0, 0, 0, puk_color);
+    else
+        puk_init(puk, 8, 0, 0, 0, puk_color);
 } // }}}
 
 
@@ -660,10 +697,69 @@ void paddle_draw(paddle_t& p, CGMatrix4x4 viewT) // {{{1
 void paddle_toggle_control(paddle_t& p) // {{{1
 {
     if (p.control == HUMAN)
-        p.control = MIGHTYBOT;
+        p.control = WEAKBOT;
     else if (p.control == MIGHTYBOT)
         p.control = HUMAN;
+    else if (p.control == WEAKBOT)
+        p.control = HUMAN;
 } // }}}
+
+
+
+/*****************************************************************************/
+/**************************** BOX ********************************************/
+/*****************************************************************************/
+
+struct box_t // {{{1
+{
+    
+    /* left buttom coord when you look from the top */
+    float posX;
+    float posZ;
+
+    float xScale;
+    float zScale;
+
+    float baseColor[4];
+
+    CGQuadric shape;
+};
+// }}}
+void box_init(box_t& p, float x, float z, float* baseColor) // {{{1
+{
+    p.posX = x;
+    p.posZ = z;
+
+    p.xScale = 1.0f;
+    p.zScale = 2.0f;
+
+    p.shape.setStandardColor(baseColor[0], baseColor[1], baseColor[2]);
+    p.shape.createBox(4,4,4);
+    
+}; // }}}
+void box_move(box_t& p, float dz) // {{{1
+{
+    /* wall constraint */
+    float new_pos = p.posZ + dz;
+    if (new_pos < 0)
+        new_pos *= -1;
+    
+    if (new_pos + (p.zScale) > 10)
+        return;
+
+    p.posZ = p.posZ + dz;
+}; // }}}
+void box_draw(box_t& p, CGMatrix4x4 viewT) // {{{1
+{
+    viewT = viewT * CGMatrix4x4::getTranslationMatrix(p.posX, 0.5, p.posZ);
+    viewT = viewT * CGMatrix4x4::getScaleMatrix(p.xScale, 1.0f, p.zScale);
+    float mv[16];
+    viewT.getFloatsToColMajor(mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_MODELVIEW_MATRIX,1,false,mv);
+    ourContext->cgUniformMatrix4fv(CG_ULOC_NORMAL_MATRIX,1,false,mv);
+    renderQuadric(p.shape);
+} // }}}
+box_t obstacle;
 
 /*****************************************************************************/
 /**************************** SIMULATION LOOP ********************************/
@@ -674,6 +770,16 @@ void paddle_toggle_control(paddle_t& p) // {{{1
  */
 void processUserInput() // {{{1
 {
+    if (puk_in_start_position(puk))
+    {
+        if (CG1Helper::isKeyReleased(' '))
+        {
+            printf("Starting the Puk!\n");
+            puk.dirX = (float)(rand() % 10 + 1.0f) / 100.0f;
+            puk.dirZ = (float)(rand() % 10 + 1.0f) / 100.0f;
+            printf("Speed X: %f  Speed Z: %f\n", puk.dirX, puk.dirZ);
+        }
+    }
     if (CG1Helper::isKeyReleased(GLUT_KEY_F1))
         help_print_keys();
 
@@ -681,9 +787,9 @@ void processUserInput() // {{{1
     if (player1.control == HUMAN)
     {
         if (CG1Helper::isKeyPressed(CG_KEY_UP))
-            paddle_move(player1, -1);
+            paddle_move(player1, -0.3);
         if (CG1Helper::isKeyPressed(CG_KEY_DOWN))
-            paddle_move(player1, 1);
+            paddle_move(player1, 0.3);
     }
     if (CG1Helper::isKeyReleased('-'))
         paddle_toggle_control(player1);
@@ -693,9 +799,9 @@ void processUserInput() // {{{1
     if (player2.control == HUMAN)
     {
         if (CG1Helper::isKeyPressed('e'))
-            paddle_move(player2, -1);
+            paddle_move(player2, -0.3);
         if (CG1Helper::isKeyPressed('d'))
-            paddle_move(player2, 1);
+            paddle_move(player2, 0.3);
     }
     if (CG1Helper::isKeyReleased('q'))
         paddle_toggle_control(player2);
@@ -733,12 +839,16 @@ void processUserInput() // {{{1
  */
 void processAI(paddle_t& p) // {{{1
 {
-    if (p.control == MIGHTYBOT)
+    if (p.control == WEAKBOT)
     {
         if (p.posZ < puk.posZ)
-            paddle_move(p, 0.4f);
+            paddle_move(p, 0.3f);
         else
-            paddle_move(p, -0.4f);
+            paddle_move(p, -0.3f);
+    }
+    else if (p.control == MIGHTYBOT)
+    {
+            p.posZ = puk.posZ;
     }
 } // }}}
 
@@ -751,19 +861,17 @@ void stop_game(sides s) // {{{1
     if (s == RIGHT)
     {
         player2.points++;
+        initBall(false);
     }
     else if (s == LEFT)
     {
         player1.points++;
+        initBall(true);
     }
-    puk_reset(puk, 0, 0, 0.4, 0.3);
     paddle_reset(player1, 10, 0);
     paddle_reset(player2, -10, 0);
     printf("Score: %i : %i\n",player2.points, player1.points);
-    printf("Restarting in: ");
-    for (int i = 3; i >= 0; i--)
-        printf("%i ",i);
-        sleep(1);
+    
     printf("\n");
 } // }}}
 
@@ -776,6 +884,9 @@ void processPhysics() // {{{1
     //nicht nur Rand links und rechts prüfen, auch ob paddle an der richtigen stelle
     // TODO: dont use fix values
     sides side;
+    
+    /* save old speed */
+    float speed = sqrt(puk.dirX * puk.dirX + puk.dirZ * puk.dirZ);
 
     /* check if someone scored */
     if (puk.posX + puk.dirX >= 10 - puk.radius || puk.posX + puk.dirX <= puk.radius - 10)
@@ -794,10 +905,39 @@ void processPhysics() // {{{1
         if( side == RIGHT )
         {
             /* check for collusion with paddle */
-            if ((puk.posZ < player1.posZ + (player1.zScale / 2)) && (puk.posZ > player1.posZ - (player1.zScale / 2)))
+            if ((puk.posZ < player1.posZ + (player1.zScale)) && (puk.posZ > player1.posZ - (player1.zScale)))
             {
-                // TODO accelerate here
+                float fac = 1.0f;
+                
+                /* ball from top */
+                if (puk.dirZ > 0)
+                {
+                    /* paddle top corner */
+                    float dis = (player1.posZ - (player1.zScale / 2)) - puk.posZ;
+                    fac = 2*dis / player1.zScale;
+                    /* force possitive */
+                    fac = (fac < 0 ? -fac : fac);
+                }
+                else
+                {
+                    /* paddle buttom corner */
+                    float dis = (player1.posZ + (player1.zScale / 2)) - puk.posZ;
+                    fac = 2*dis / player1.zScale;
+                    /* force possitive */
+                    fac = (fac < 0 ? -fac : fac);
+                }
                 puk.dirX = - puk.dirX;
+                puk.dirZ = fac * puk.dirZ;
+
+                // norm the vector
+                float amount = sqrt(puk.dirX * puk.dirX + puk.dirZ * puk.dirZ);
+                puk.dirX = puk.dirX / amount;
+                puk.dirZ = puk.dirZ / amount;
+                
+                // add original speed
+                puk.dirX = puk.dirX * speed;
+                puk.dirZ = puk.dirZ * speed;
+                puk_speedup(puk, ACCEL_FAC);
             }
             else
             {
@@ -806,9 +946,41 @@ void processPhysics() // {{{1
         }
         else
         {
-            if (puk.posZ < player2.posZ + (player2.zScale / 2) && puk.posZ > player2.posZ - (player2.zScale / 2))
+            if (puk.posZ < player2.posZ + (player2.zScale) && puk.posZ > player2.posZ - (player2.zScale))
             {
+                float fac = 1.0f;
+                
+                /* ball from top */
+                if (puk.dirZ > 0)
+                {
+                    /* paddle top corner */
+                    float dis = (player2.posZ - (player2.zScale / 2)) - puk.posZ;
+                    fac = 2*dis / player2.zScale;
+                    /* force possitive */
+                    fac = (fac < 0 ? -fac : fac);
+                }
+                else
+                {
+                    /* paddle buttom corner */
+                    float dis = (player2.posZ + (player2.zScale / 2)) - puk.posZ;
+                    fac = 2*dis / player2.zScale;
+                    /* force possitive */
+                    fac = (fac < 0 ? -fac : fac);
+                }
                 puk.dirX = - puk.dirX;
+                puk.dirZ = fac * puk.dirZ;
+
+                // norm the vector
+                float amount = sqrt(puk.dirX * puk.dirX + puk.dirZ * puk.dirZ);
+                puk.dirX = puk.dirX / amount;
+                puk.dirZ = puk.dirZ / amount;
+                
+                // add original speed
+                puk.dirX = puk.dirX * speed;
+                puk.dirZ = puk.dirZ * speed;
+                
+                /* speed up */
+                puk_speedup(puk, ACCEL_FAC);
             }
             else
             {
@@ -822,6 +994,41 @@ void processPhysics() // {{{1
     {
         puk.dirZ = - (puk.dirZ);
     }
+    
+    /* check the obstacle collusion */
+    /* check if puk is in the box , add the puk radius here*/
+    float p_new_xpos = puk.posX + puk.dirX;
+    float p_new_zpos = puk.posZ + puk.dirZ;
+
+    //if (p_new_xpos < 0)
+    //    p_new_xpos -= puk.radius;
+    //else
+    //    p_new_xpos += puk.radius;
+
+    //if (p_new_zpos < 0)
+    //    p_new_zpos -= puk.radius;
+    //else
+    //    p_new_zpos += puk.radius;
+
+    /* bounds */
+    float xmax_bound = obstacle.posX + (obstacle.xScale / 2) + puk.radius;
+    float xmin_bound = obstacle.posX - (obstacle.xScale / 2) - puk.radius;
+    float zmax_bound = obstacle.posZ + (obstacle.zScale / 2) + puk.radius;
+    float zmin_bound = obstacle.posZ - (obstacle.zScale / 2) - puk.radius;
+    
+    //printf("%f, %f, %f, %f\n", xmax_bound, xmin_bound, zmax_bound, zmin_bound);
+    
+    if (p_new_xpos <= xmax_bound && p_new_xpos >= xmin_bound &&
+        p_new_zpos <= zmax_bound && p_new_zpos >= zmin_bound)
+    {
+        if (puk.posZ < zmin_bound || puk.posZ > zmax_bound)
+            puk.dirZ = -puk.dirZ;
+        else
+            puk.dirX = -puk.dirX;
+    }
+        
+
+
 } // }}}
 
 /*
@@ -837,6 +1044,7 @@ void drawFrame() // {{{1
     ourContext->cgEnable(CG_BLEND);
     ourContext->cgEnable(CG_COLOR_MATERIAL);
     ourContext->cgDisable(CG_PHONG_SHADING);
+
     if (use_light)
         ourContext->cgEnable(CG_LIGHTING);
     else
@@ -928,6 +1136,8 @@ void drawFrame() // {{{1
     paddle_draw(player1, viewT);
     paddle_draw(player2, viewT);
     
+    box_draw(obstacle, viewT);
+    
     puk_move(puk);
     puk_draw(puk, viewT);
 
@@ -955,55 +1165,6 @@ void programStep() // {{{1
 
 
 
-//---------------------------------------------------------------------------
-
-bool isSphereInFrustum(CGVec4 posES, float radius)
-{
-    // A2c) Testen, ob Bounding Sphere im Frustum liegt
-    if(CGMath::dot(ourCamera.clip_plane[0].n,posES)-ourCamera.clip_plane[0].d-radius >0)
-        return false;
-    if(CGMath::dot(ourCamera.clip_plane[1].n,posES)-ourCamera.clip_plane[1].d-radius >0)
-        return false;
-    return true;
-}
-//---------------------------------------------------------------------------
-void programStep_FrustumCulling()
-{
-    ourContext->cgClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    ourContext->cgClear(CG_COLOR_BUFFER_BIT|CG_DEPTH_BUFFER_BIT);
-    ourContext->cgEnable(CG_DEPTH_TEST);
-    ourContext->cgEnable(CG_CULL_FACE);
-    ourContext->cgDisable(CG_BLEND);
-    ourContext->cgEnable(CG_USE_BRESENHAM);
-    setCamera();
-    int visible=0;
-    //for(int i=0; i<NDEER; i++) {
-    //    // Transform the (object space) position of the deer into eye space.
-    //    // A2d) Eye Space position des Mittelpunkts der Sphere bestimmen
-    //    CGVec4 posES = ourCamera.viewMatrix * deer[i].pos;
-
-    //    // A2d) nur zeichnen, wenn nicht ausserhalb
-    //    if(isSphereInFrustum(posES,deer[i].radius)){
-    //        drawCGDeer(ourCamera.viewMatrix, deer[i]);
-    //        visible++;
-    //    }
-    //}
-    //printf("visible: %d: culled: %d\n",visible,NDEER-visible);
-}
-
-//---------------------------------------------------------------------------
-// Light and material properties, which will later be passed as uniforms.
-float rgbaWhite10[4] = {1,1,1,1},
-    rgbaWhite01[4] = {0.1,0.1,0.1,1.0},
-    rgbaWhite05[4] = {0.5,0.5,0.5,1.0},
-    rgbaGreen[4] = {0,1,0,1.0},
-    rgbaRed[4] = {1,0,0,1},
-    rgbaBlack[4] = {0,0,0,1};
-float shininess = 32.0f;
-//---------------------------------------------------------------------------
-
-
-
 int main(int argc, char** argv)
 {
     /* init cam */
@@ -1017,15 +1178,20 @@ int main(int argc, char** argv)
     play_ground_init(playGround, 20, 20, pl_color, pl_border_color);
 
     /* init ball */
-    float puk_color[4] = {0.9f, 0.2f, 0.2f, 1.0f};
+    //float puk_color[4] = {0.9f, 0.2f, 0.2f, 1.0f};
     //puk_init(puk, 0, 0, 0.4, 0.3, puk_color);
-    puk_init(puk, 0, 0, 0, 0.7, puk_color);
+    //puk_init(puk, 0, 0, 0, 0.7, puk_color);
+    //puk_init(puk, 0, 3, 0,0.3, puk_color);
+    initBall(true);
+
+    /* init obstacle */
+    box_init(obstacle, 0, 0, pl_border_color);
+    
 
     /* init player 1 */
     float player1_color[4] = {0.2f, 0.2f, 0.8f, 1.0f};
     paddle_init(player1, 10, 0, player1_color, HUMAN);
-
-    paddle_init(player2, -10, 0, player1_color, MIGHTYBOT);
+    paddle_init(player2, -10, 0, player1_color, WEAKBOT);
 
 
     CG1Helper::initApplication(ourContext, FRAME_WIDTH, FRAME_HEIGHT, FRAME_SCALE);
